@@ -1,4 +1,4 @@
-# 🛡 Mini SOC Log Analyzer – v4 (Professional Edition)
+# Mini SOC Log Analyzer
 
 A Python-based log analysis tool that simulates real SOC operations by detecting brute force attacks using time-based detection logic.
 
