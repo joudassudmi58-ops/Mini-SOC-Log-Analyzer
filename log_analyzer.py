@@ -1,3 +1,19 @@
+from datetime import datetime
+import csv
+
+THRESHOLD = 3
+TIME_WINDOW_SECONDS = 60
+
+
+def parse_timestamp(raw_time):
+    # Remove closing bracket if exists
+    raw_time = raw_time.replace("]", "")
+
+    # Remove timezone if exists
+    raw_time = raw_time.split()[0]
+
+    return datetime.strptime(raw_time, "%d/%b/%Y:%H:%M:%S")
+
 
 def analyze_log(file_path):
     failed_attempts = {}
@@ -7,34 +23,57 @@ def analyze_log(file_path):
             if "FAILED LOGIN" in line:
                 parts = line.split()
 
-                ip = parts[0]  # IP is first element
-                timestamp = parts[3].strip("[")  # Extract timestamp
+                ip = parts[0]
 
-                if ip in failed_attempts:
-                    failed_attempts[ip]["count"] += 1
-                else:
-                    failed_attempts[ip] = {
-                        "count": 1,
-                        "timestamps": [timestamp]
-                    }
+                # Extract timestamp safely
+                raw_timestamp = parts[3].strip("[")
 
-    print("\n🚨 Failed Login Attempts Report:\n")
+                try:
+                    timestamp = parse_timestamp(raw_timestamp)
+                except ValueError:
+                    continue  # Skip malformed lines safely
 
-    # Sort by highest attempts
-    sorted_ips = sorted(
-        failed_attempts.items(),
-        key=lambda x: x[1]["count"],
-        reverse=True
-    )
+                if ip not in failed_attempts:
+                    failed_attempts[ip] = []
 
-    for ip, data in sorted_ips:
-        print(f"IP: {ip}")
-        print(f"Attempts: {data['count']}")
-        print(f"Timestamps: {data['timestamps']}")
-        print("-" * 40)
+                failed_attempts[ip].append(timestamp)
 
-        if data["count"] >= 3:
-            print("⚠ ALERT: Possible Brute Force Attack!\n")
+    suspicious_ips = []
+
+    print("\n🚨 Advanced Failed Login Report\n")
+
+    for ip, timestamps in failed_attempts.items():
+        timestamps.sort()
+
+        for i in range(len(timestamps) - (THRESHOLD - 1)):
+            time_diff = (
+                timestamps[i + THRESHOLD - 1] - timestamps[i]
+            ).seconds
+
+            if time_diff <= TIME_WINDOW_SECONDS:
+                print("⚠ ALERT: Brute Force Detected!")
+                print(f"IP: {ip}")
+                print(f"Total Attempts: {len(timestamps)}")
+                print("-" * 40)
+
+                suspicious_ips.append(ip)
+                break
+
+    # Export CSV Report
+    with open("report.csv", "w", newline="") as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(["IP Address", "Total Failed Attempts"])
+
+        for ip, timestamps in failed_attempts.items():
+            writer.writerow([ip, len(timestamps)])
+
+    # Generate Blocklist
+    with open("blocklist.txt", "w") as blockfile:
+        for ip in suspicious_ips:
+            blockfile.write(ip + "\n")
+
+    print("\n✅ Report exported to report.csv")
+    print("✅ Blocklist generated in blocklist.txt")
 
 
 if __name__ == "__main__":
